@@ -1,0 +1,14 @@
+html,
+body,
+#app {
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  background: var(--color-body);
+}
+
+* {
+  box-sizing: border-box;
+}
