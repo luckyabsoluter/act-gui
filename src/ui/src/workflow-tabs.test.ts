@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {buildWorkflowTabs, normalizeStatus, type RunListItem} from './workflow-tabs.ts';
 
-function run(status: RunListItem['Status'], workflow = '.github/workflows/test.yml'): RunListItem {
+function run(status: RunListItem['Status'], workflow = 'src/testdata/workflows/test.yml'): RunListItem {
   return {
     ID: 1,
     CreatedAt: '',

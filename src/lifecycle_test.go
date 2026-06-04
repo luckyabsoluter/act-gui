@@ -8,7 +8,7 @@ import (
 
 func TestFinishRunCancelsRunningChildren(t *testing.T) {
 	db := newTestDB(t)
-	run := Run{Name: "act push", Workflow: ".github/workflows/test.yml", Event: "push", Status: "running"}
+	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "running"}
 	if err := db.Create(&run).Error; err != nil {
 		t.Fatalf("create run: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestWatchRunCancellationPostsCancelled(t *testing.T) {
 
 func TestRefreshRunStatusDoesNotReopenCancelledRun(t *testing.T) {
 	db := newTestDB(t)
-	run := Run{Name: "act push", Workflow: ".github/workflows/test.yml", Event: "push", Status: "cancelled"}
+	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "cancelled"}
 	if err := db.Create(&run).Error; err != nil {
 		t.Fatalf("create run: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestRefreshRunStatusDoesNotReopenCancelledRun(t *testing.T) {
 
 func TestParseLogLineDoesNotCreateRunningWorkAfterCancellation(t *testing.T) {
 	db := newTestDB(t)
-	run := Run{Name: "act push", Workflow: ".github/workflows/test.yml", Event: "push", Status: "cancelled"}
+	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "cancelled"}
 	if err := db.Create(&run).Error; err != nil {
 		t.Fatalf("create run: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestParseLogLineDoesNotCreateRunningWorkAfterCancellation(t *testing.T) {
 
 func TestParseLogLineUpdatesSeededJob(t *testing.T) {
 	db := newTestDB(t)
-	run := Run{Name: "act push", Workflow: ".github/workflows/test.yml", Event: "push", Status: "running"}
+	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "running"}
 	if err := db.Create(&run).Error; err != nil {
 		t.Fatalf("create run: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestParseLogLineUpdatesSeededJob(t *testing.T) {
 
 func TestFinishRunSkipsWaitingJobsOnSuccess(t *testing.T) {
 	db := newTestDB(t)
-	run := Run{Name: "act push", Workflow: ".github/workflows/test.yml", Event: "push", Status: "running"}
+	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "running"}
 	if err := db.Create(&run).Error; err != nil {
 		t.Fatalf("create run: %v", err)
 	}

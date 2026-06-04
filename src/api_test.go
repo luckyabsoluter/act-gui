@@ -61,7 +61,7 @@ func createRunScenario(t *testing.T, db *gorm.DB) (Run, Job, Job) {
 	t.Helper()
 	run := Run{
 		Name:      "act workflow_dispatch",
-		Workflow:  ".github/workflows/test.yml",
+		Workflow:  "src/testdata/workflows/test.yml",
 		Event:     "workflow_dispatch",
 		Branch:    "main",
 		CommitSHA: "abc1234",
@@ -135,7 +135,7 @@ func TestActionAPIExposesWorkflowRunsJobsAndCursorLogs(t *testing.T) {
 	}
 
 	summary := decodeActionRun(t, mux, http.MethodPost, fmt.Sprintf("/api/runs/%d", run.ID), nil)
-	if summary.State.Run.WorkflowID != ".github/workflows/test.yml" {
+	if summary.State.Run.WorkflowID != "src/testdata/workflows/test.yml" {
 		t.Fatalf("summary workflowID = %q", summary.State.Run.WorkflowID)
 	}
 	if summary.State.Run.ViewLink != fmt.Sprintf("/runs/%d", run.ID) {

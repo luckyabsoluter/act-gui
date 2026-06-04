@@ -16,7 +16,7 @@ func TestInferActEvent(t *testing.T) {
 		{name: "job flag only", args: []string{"-j", "build"}, want: "push"},
 		{name: "long job flag before event", args: []string{"--job", "build", "workflow_dispatch"}, want: "workflow_dispatch"},
 		{name: "long job flag with value before event", args: []string{"--job=build", "pull_request"}, want: "pull_request"},
-		{name: "workflow flag before event", args: []string{"-W", ".github/workflows/test.yml", "workflow_dispatch"}, want: "workflow_dispatch"},
+		{name: "workflow flag before event", args: []string{"-W", "src/testdata/workflows/test.yml", "workflow_dispatch"}, want: "workflow_dispatch"},
 	}
 
 	for _, tt := range tests {
@@ -31,9 +31,9 @@ func TestInferActEvent(t *testing.T) {
 func TestBuildStartRunPayloadPreservesWorkflowFlag(t *testing.T) {
 	t.Chdir("..")
 
-	payload := buildStartRunPayload([]string{"-W", ".github/workflows/test.yml", "-j", "lint", "workflow_dispatch"})
-	if payload.Workflow != ".github/workflows/test.yml" {
-		t.Fatalf("Workflow = %q, want .github/workflows/test.yml", payload.Workflow)
+	payload := buildStartRunPayload([]string{"-W", "src/testdata/workflows/test.yml", "-j", "lint", "workflow_dispatch"})
+	if payload.Workflow != "src/testdata/workflows/test.yml" {
+		t.Fatalf("Workflow = %q, want src/testdata/workflows/test.yml", payload.Workflow)
 	}
 	if payload.Event != "workflow_dispatch" {
 		t.Fatalf("Event = %q, want workflow_dispatch", payload.Event)

@@ -21,7 +21,7 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for architecture and maintenance 
 Run act-gui with act-compatible arguments:
 
 ```bash
-./act-gui -W .github/workflows/test.yml
+./act-gui -W src/testdata/workflows/test.yml
 ```
 
 On startup, act-gui prints the web server address:
