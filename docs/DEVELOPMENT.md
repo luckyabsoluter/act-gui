@@ -2,6 +2,16 @@
 
 This document records the current architecture choices and the maintenance risks that follow from them.
 
+## Status
+
+This project is under active development. The current implementation favors a practical local workflow over a stable public API.
+
+Important maintenance notes:
+
+- act is used as a Go library, not as an external executable.
+- act output is parsed non-invasively to infer jobs, steps, logs, and status. This keeps act-gui decoupled from act internals, but it can break if act output changes.
+- Parts of the UI are copied from Gitea to provide a mature Actions-like interface. This improves the UI quickly, but copied source requires careful license and maintenance handling.
+
 ## Goals
 
 act-gui is a local GUI for `act`. It should keep act-compatible command-line arguments, run workflows through the act backend, and expose a GitHub Actions-like web interface for workflow runs, jobs, steps, logs, and progress.

@@ -6,15 +6,7 @@ It keeps act-compatible command-line arguments, starts or connects to a local da
 
 ## Status
 
-This project is under active development. The current implementation favors a practical local workflow over a stable public API.
-
-Important maintenance notes:
-
-- act is used as a Go library, not as an external executable.
-- act output is parsed non-invasively to infer jobs, steps, logs, and status. This keeps act-gui decoupled from act internals, but it can break if act output changes.
-- Parts of the UI are copied from Gitea to provide a mature Actions-like interface. This improves the UI quickly, but copied source requires careful license and maintenance handling.
-
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for architecture and maintenance details.
+This project is under active development. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for architecture and maintenance details.
 
 ## Usage
 
