@@ -41,9 +41,10 @@ var (
 
 const (
 	internalDaemonFlag = "--act-gui-daemon"
-	actGUIVersion      = "act-gui dev"
 	daemonURL          = "http://localhost:18080"
 )
+
+var ActGUIVersion = "act-gui dev"
 
 func actGUIDataDir() (string, error) {
 	home, _ := os.UserHomeDir()
@@ -458,7 +459,7 @@ func main() {
 	defer stopSignals()
 	stopCancellationWatch := watchRunCancellation(ctx, finish)
 
-	actcmd.Execute(ctx, actGUIVersion)
+	actcmd.Execute(ctx, ActGUIVersion)
 	stopCancellationWatch()
 
 	wOut.Close()
