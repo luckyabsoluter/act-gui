@@ -18,6 +18,8 @@ act-gui is a local GUI for `act`. It should keep act-compatible command-line arg
 
 The daemon owns the local web server and runtime state. Individual `act-gui` CLI invocations should be able to attach to the daemon, start a run, stream output, detach cleanly, and preserve run history without depending on the current project directory for runtime data.
 
+The daemon listens on `localhost:18080` by default. `--act-gui-port <port>` is an act-gui-only argument: the CLI strips it before handing control to act, starts or connects to the daemon on that port, and passes the same port to the internal daemon process.
+
 ## Why Go
 
 Go is used for the top-level application because it supports a simple single-file distribution model. The current executable embeds the frontend bundle and can run without a separate Node, Python, or web-server installation.

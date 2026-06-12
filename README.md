@@ -16,6 +16,12 @@ Run act-gui with act-compatible arguments:
 ./act-gui -W src/testdata/workflows/test.yml
 ```
 
+Use `--act-gui-port` to run or connect to the local daemon on a different port:
+
+```bash
+./act-gui --act-gui-port 27979 -W src/testdata/workflows/test.yml
+```
+
 On startup, act-gui prints the web server address:
 
 ```text
@@ -33,6 +39,8 @@ The daemon listens on:
 ```text
 http://localhost:18080
 ```
+
+The default port is `18080`. Use `--act-gui-port <port>` to select another daemon port for both the CLI invocation and the daemon it starts.
 
 The internal daemon flag is reserved for act-gui itself:
 

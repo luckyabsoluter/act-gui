@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -41,10 +42,55 @@ var (
 
 const (
 	internalDaemonFlag = "--act-gui-daemon"
-	daemonURL          = "http://localhost:18080"
+	actGUIPortFlag     = "--act-gui-port"
+	defaultDaemonPort  = "18080"
+	daemonHost         = "localhost"
 )
 
 var ActGUIVersion = "act-gui dev"
+
+func daemonBaseURL(port string) string {
+	return "http://" + daemonHost + ":" + port
+}
+
+func validateDaemonPort(port string) (string, error) {
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("%s must be a TCP port from 1 to 65535", actGUIPortFlag)
+	}
+	return strconv.Itoa(n), nil
+}
+
+func parseActGUIArgs(args []string) (string, []string, error) {
+	port := defaultDaemonPort
+	actArgs := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			actArgs = append(actArgs, args[i:]...)
+			break
+		}
+		if arg == actGUIPortFlag {
+			if i+1 >= len(args) {
+				return "", nil, fmt.Errorf("%s requires a port value", actGUIPortFlag)
+			}
+			port = args[i+1]
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, actGUIPortFlag+"=") {
+			port = strings.TrimPrefix(arg, actGUIPortFlag+"=")
+			continue
+		}
+		actArgs = append(actArgs, arg)
+	}
+
+	port, err := validateDaemonPort(port)
+	if err != nil {
+		return "", nil, err
+	}
+	return port, actArgs, nil
+}
 
 func actGUIDataDir() (string, error) {
 	home, _ := os.UserHomeDir()
@@ -102,9 +148,9 @@ func broadcast(msg []byte) {
 	}
 }
 
-func isDaemonRunning() bool {
+func isDaemonRunning(baseURL string) bool {
 	client := http.Client{Timeout: 1 * time.Second}
-	resp, err := client.Get(daemonURL + "/ping")
+	resp, err := client.Get(baseURL + "/ping")
 	if err != nil {
 		return false
 	}
@@ -112,18 +158,18 @@ func isDaemonRunning() bool {
 	return resp.StatusCode == 200
 }
 
-func startDaemon() error {
+func startDaemon(baseURL string, port string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, internalDaemonFlag)
+	cmd := exec.Command(exe, internalDaemonFlag, actGUIPortFlag, port)
 	configureDaemonCommand(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	for i := 0; i < 15; i++ {
-		if isDaemonRunning() {
+		if isDaemonRunning(baseURL) {
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -247,7 +293,7 @@ type FinishRunPayload struct {
 	Status string `json:"status"`
 }
 
-func pipeToDaemon(r *os.File, original io.Writer, client *http.Client, runID uint) {
+func pipeToDaemon(r *os.File, original io.Writer, client *http.Client, baseURL string, runID uint) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -255,7 +301,7 @@ func pipeToDaemon(r *os.File, original io.Writer, client *http.Client, runID uin
 		go func(l string) {
 			payload := LogPayload{RunID: runID, Message: l}
 			b, _ := json.Marshal(payload)
-			resp, err := client.Post(daemonURL+"/log", "application/json", bytes.NewBuffer(b))
+			resp, err := client.Post(baseURL+"/log", "application/json", bytes.NewBuffer(b))
 			if err == nil {
 				resp.Body.Close()
 			}
@@ -263,12 +309,12 @@ func pipeToDaemon(r *os.File, original io.Writer, client *http.Client, runID uin
 	}
 }
 
-func postFinishRun(client *http.Client, runID uint, status string) {
+func postFinishRun(client *http.Client, baseURL string, runID uint, status string) {
 	if runID == 0 {
 		return
 	}
 	finishPayload, _ := json.Marshal(FinishRunPayload{RunID: runID, Status: status})
-	resp, err := client.Post(daemonURL+"/run/finish", "application/json", bytes.NewBuffer(finishPayload))
+	resp, err := client.Post(baseURL+"/run/finish", "application/json", bytes.NewBuffer(finishPayload))
 	if err == nil {
 		resp.Body.Close()
 	}
@@ -296,7 +342,14 @@ func runCompletionStatus(ctx context.Context) string {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == internalDaemonFlag {
+	port, actArgs, err := parseActGUIArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "act-gui: %v\n", err)
+		os.Exit(2)
+	}
+	baseURL := daemonBaseURL(port)
+
+	if len(actArgs) > 0 && actArgs[0] == internalDaemonFlag {
 		dbPath, err := actGUIDatabasePath()
 		if err != nil {
 			panic(err)
@@ -308,7 +361,7 @@ func main() {
 		db.AutoMigrate(&Run{}, &Job{}, &Step{}, &LogLine{})
 		RegisterAPI(db)
 
-		fmt.Println("Starting daemon on " + daemonURL)
+		fmt.Println("Starting daemon on " + baseURL)
 		fmt.Println("Using data directory " + filepath.Dir(dbPath))
 
 		http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
@@ -410,24 +463,24 @@ func main() {
 			fsHandler.ServeHTTP(w, r)
 		})
 
-		http.ListenAndServe(":18080", nil)
+		http.ListenAndServe(":"+port, nil)
 		return
 	}
 
-	if !isDaemonRunning() {
+	if !isDaemonRunning(baseURL) {
 		fmt.Println("Daemon not found, starting a new daemon...")
-		if err := startDaemon(); err != nil {
+		if err := startDaemon(baseURL, port); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to start act-gui daemon: %v\n", err)
 		}
 	}
-	if isDaemonRunning() {
-		fmt.Println("act-gui server: " + daemonURL)
+	if isDaemonRunning(baseURL) {
+		fmt.Println("act-gui server: " + baseURL)
 	}
 
 	client := &http.Client{Timeout: 2 * time.Second}
 
-	runPayload, _ := json.Marshal(buildStartRunPayload(os.Args[1:]))
-	resp, err := client.Post(daemonURL+"/run/start", "application/json", bytes.NewBuffer(runPayload))
+	runPayload, _ := json.Marshal(buildStartRunPayload(actArgs))
+	resp, err := client.Post(baseURL+"/run/start", "application/json", bytes.NewBuffer(runPayload))
 	var runID uint
 	if err == nil {
 		var startResp StartRunResponse
@@ -445,13 +498,13 @@ func main() {
 	os.Stdout = wOut
 	os.Stderr = wErr
 
-	go pipeToDaemon(rOut, oldStdout, client, runID)
-	go pipeToDaemon(rErr, oldStderr, client, runID)
+	go pipeToDaemon(rOut, oldStdout, client, baseURL, runID)
+	go pipeToDaemon(rErr, oldStderr, client, baseURL, runID)
 
 	finishOnce := sync.Once{}
 	finish := func(status string) {
 		finishOnce.Do(func() {
-			postFinishRun(client, runID, status)
+			postFinishRun(client, baseURL, runID, status)
 		})
 	}
 
@@ -459,6 +512,7 @@ func main() {
 	defer stopSignals()
 	stopCancellationWatch := watchRunCancellation(ctx, finish)
 
+	os.Args = append([]string{os.Args[0]}, actArgs...)
 	actcmd.Execute(ctx, ActGUIVersion)
 	stopCancellationWatch()
 
