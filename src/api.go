@@ -143,10 +143,14 @@ func formatDuration(started, finished time.Time) string {
 }
 
 func formatStatusDuration(started, finished time.Time, status string) string {
-	if !doneStatus(status) {
+	switch giteaStatus(status) {
+	case "running":
 		return formatDuration(started, time.Time{})
+	case "success", "failure", "cancelled", "skipped":
+		return formatDuration(started, finished)
+	default:
+		return ""
 	}
-	return formatDuration(started, finished)
 }
 
 func doneStatus(status string) bool {
@@ -187,6 +191,68 @@ func loadRun(db *gorm.DB, runID uint) (Run, error) {
 	return run, err
 }
 
+func normalizedJobIDCandidate(name string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(name))), "-")
+}
+
+func needTokenSet(jobs []Job) map[string]bool {
+	tokens := map[string]bool{}
+	for _, job := range jobs {
+		for _, need := range decodeNeeds(job.Needs) {
+			tokens[need] = true
+		}
+	}
+	return tokens
+}
+
+func jobWorkflowID(job Job, fallback string, needs map[string]bool) string {
+	if strings.TrimSpace(job.JobID) != "" {
+		return job.JobID
+	}
+	name := strings.TrimSpace(job.Name)
+	if name == "" {
+		return fallback
+	}
+	for _, candidate := range []string{name, strings.ToLower(name), normalizedJobIDCandidate(name)} {
+		if candidate != "" && needs[candidate] {
+			return candidate
+		}
+	}
+	return name
+}
+
+func jobDisplayName(job Job, fallback string) string {
+	if strings.TrimSpace(job.Name) != "" {
+		return job.Name
+	}
+	return fallback
+}
+
+func jobStartTime(job Job) time.Time {
+	var started time.Time
+	for _, step := range job.Steps {
+		if step.CreatedAt.IsZero() {
+			continue
+		}
+		if started.IsZero() || step.CreatedAt.Before(started) {
+			started = step.CreatedAt
+		}
+	}
+	if !started.IsZero() {
+		return started
+	}
+
+	switch giteaStatus(job.Status) {
+	case "running":
+		if !job.UpdatedAt.IsZero() && job.UpdatedAt.After(job.CreatedAt) {
+			return job.UpdatedAt
+		}
+		return job.CreatedAt
+	default:
+		return time.Time{}
+	}
+}
+
 func buildGiteaRun(run Run, activeJobID string) (GiteaRun, *Job) {
 	jobs := make([]GiteaJob, 0, len(run.Jobs))
 	var activeJob *Job
@@ -196,27 +262,32 @@ func buildGiteaRun(run Run, activeJobID string) (GiteaRun, *Job) {
 	if workflowID == "" {
 		workflowID = "local act workflow"
 	}
+	needs := needTokenSet(run.Jobs)
+	workflowJobIDs := make(map[uint]string, len(run.Jobs))
+	for i := range run.Jobs {
+		j := &run.Jobs[i]
+		routeJobID := strconv.FormatUint(uint64(j.ID), 10)
+		workflowJobIDs[j.ID] = jobWorkflowID(*j, routeJobID, needs)
+	}
 
 	for i := range run.Jobs {
 		j := &run.Jobs[i]
 		routeJobID := strconv.FormatUint(uint64(j.ID), 10)
-		workflowJobID := j.Name
-		if workflowJobID == "" {
-			workflowJobID = routeJobID
-		}
+		workflowJobID := workflowJobIDs[j.ID]
+		jobName := jobDisplayName(*j, workflowJobID)
 		jobs = append(jobs, GiteaJob{
 			ID:               int(j.ID),
 			Link:             fmt.Sprintf("%s/jobs/%d", baseLink, j.ID),
 			JobID:            workflowJobID,
-			Name:             j.Name,
+			Name:             jobName,
 			Status:           giteaStatus(j.Status),
-			Duration:         formatStatusDuration(j.CreatedAt, j.UpdatedAt, j.Status),
+			Duration:         formatStatusDuration(jobStartTime(*j), j.UpdatedAt, j.Status),
 			Needs:            decodeNeeds(j.Needs),
 			ParentJobID:      0,
 			CanRerun:         false,
 			IsReusableCaller: false,
 		})
-		if activeJobID != "" && (activeJobID == routeJobID || activeJobID == workflowJobID) {
+		if activeJobID != "" && (activeJobID == routeJobID || activeJobID == workflowJobID || activeJobID == jobName) {
 			activeJob = j
 		}
 	}
@@ -434,7 +505,9 @@ func RegisterAPIWithMux(mux *http.ServeMux, db *gorm.DB) {
 		stepsLog := []GiteaStepLog{}
 
 		if activeJob != nil {
-			currentJob.Title = activeJob.Name
+			routeJobID := strconv.FormatUint(uint64(activeJob.ID), 10)
+			workflowJobID := jobWorkflowID(*activeJob, routeJobID, needTokenSet(run.Jobs))
+			currentJob.Title = jobDisplayName(*activeJob, workflowJobID)
 			currentJob.Detail = activeJob.Status
 			for idx, step := range activeJob.Steps {
 				currentJob.Steps = append(currentJob.Steps, GiteaStep{

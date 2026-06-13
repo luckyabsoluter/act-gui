@@ -10,6 +10,7 @@ import (
 )
 
 type StartJobPayload struct {
+	JobID string   `json:"job_id"`
 	Name  string   `json:"name"`
 	Needs []string `json:"needs,omitempty"`
 }
@@ -59,11 +60,11 @@ func workflowJobsFromPath(path string) []StartJobPayload {
 	seen := map[string]bool{}
 	for _, name := range names {
 		for _, job := range workflowJobsFromFile(filepath.Join(path, name)) {
-			if seen[job.Name] {
+			if seen[job.JobID] {
 				continue
 			}
 			jobs = append(jobs, job)
-			seen[job.Name] = true
+			seen[job.JobID] = true
 		}
 	}
 	return jobs
@@ -95,8 +96,13 @@ func workflowJobsFromContent(content []byte) []StartJobPayload {
 		if key.Kind != yaml.ScalarNode || key.Value == "" {
 			continue
 		}
+		name := yamlStringValue(mappingValue(value, "name"))
+		if name == "" {
+			name = key.Value
+		}
 		jobs = append(jobs, StartJobPayload{
-			Name:  key.Value,
+			JobID: key.Value,
+			Name:  name,
 			Needs: yamlStringList(mappingValue(value, "needs")),
 		})
 	}
@@ -146,6 +152,13 @@ func yamlStringList(node *yaml.Node) []string {
 	default:
 		return nil
 	}
+}
+
+func yamlStringValue(node *yaml.Node) string {
+	if node == nil || node.Kind != yaml.ScalarNode {
+		return ""
+	}
+	return node.Value
 }
 
 func encodeNeeds(needs []string) string {

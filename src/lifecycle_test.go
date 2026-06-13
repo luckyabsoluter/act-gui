@@ -94,6 +94,7 @@ func TestRefreshRunStatusDoesNotReopenCancelledRun(t *testing.T) {
 }
 
 func TestParseLogLineDoesNotCreateRunningWorkAfterCancellation(t *testing.T) {
+	resetParserTestState()
 	db := newTestDB(t)
 	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "cancelled"}
 	if err := db.Create(&run).Error; err != nil {
@@ -109,13 +110,21 @@ func TestParseLogLineDoesNotCreateRunningWorkAfterCancellation(t *testing.T) {
 	}
 }
 
+func resetParserTestState() {
+	parserMu.Lock()
+	defer parserMu.Unlock()
+	activeJobs = make(map[string]uint)
+	activeSteps = make(map[uint]uint)
+}
+
 func TestParseLogLineUpdatesSeededJob(t *testing.T) {
+	resetParserTestState()
 	db := newTestDB(t)
 	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "running"}
 	if err := db.Create(&run).Error; err != nil {
 		t.Fatalf("create run: %v", err)
 	}
-	job := Job{RunID: run.ID, Name: "build", Status: "waiting", Needs: "lint"}
+	job := Job{RunID: run.ID, JobID: "build", Name: "build", Status: "waiting", Needs: "lint"}
 	if err := db.Create(&job).Error; err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -141,6 +150,43 @@ func TestParseLogLineUpdatesSeededJob(t *testing.T) {
 	db.Where("job_id = ?", job.ID).Find(&steps)
 	if len(steps) != 1 || steps[0].Name != "tests" {
 		t.Fatalf("steps = %#v, want one tests step", steps)
+	}
+}
+
+func TestParseLogLineMatchesSeededJobByDisplayName(t *testing.T) {
+	resetParserTestState()
+	db := newTestDB(t)
+	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "running"}
+	if err := db.Create(&run).Error; err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	job := Job{RunID: run.ID, JobID: "build", Name: "Build Artifacts", Status: "waiting", Needs: "lint"}
+	if err := db.Create(&job).Error; err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	ParseLogLine(db, run.ID, "[Build Artifacts] ⭐ Run compile")
+	ParseLogLine(db, run.ID, "[build] 🏁  Job succeeded")
+
+	var jobs []Job
+	db.Where("run_id = ?", run.ID).Find(&jobs)
+	if len(jobs) != 1 {
+		t.Fatalf("jobs length = %d, want 1", len(jobs))
+	}
+	if jobs[0].ID != job.ID {
+		t.Fatalf("job ID = %d, want seeded job %d", jobs[0].ID, job.ID)
+	}
+	if jobs[0].JobID != "build" || jobs[0].Name != "Build Artifacts" {
+		t.Fatalf("job identity = %#v, want build / Build Artifacts", jobs[0])
+	}
+	if jobs[0].Status != "success" {
+		t.Fatalf("job status = %q, want success", jobs[0].Status)
+	}
+
+	var steps []Step
+	db.Where("job_id = ?", job.ID).Find(&steps)
+	if len(steps) != 1 || steps[0].Name != "compile" {
+		t.Fatalf("steps = %#v, want one compile step", steps)
 	}
 }
 

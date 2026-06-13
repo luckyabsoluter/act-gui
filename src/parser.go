@@ -15,6 +15,31 @@ var (
 	parserMu    sync.Mutex
 )
 
+func activeJobKey(runID uint, token string) string {
+	return fmt.Sprintf("%d-%s", runID, strings.TrimSpace(token))
+}
+
+func activeJobID(db *gorm.DB, runID uint, token string) (uint, bool) {
+	key := activeJobKey(runID, token)
+	if id, exists := activeJobs[key]; exists {
+		var count int64
+		db.Model(&Job{}).Where("id = ? AND run_id = ?", id, runID).Count(&count)
+		if count > 0 {
+			return id, true
+		}
+		delete(activeJobs, key)
+	}
+	return 0, false
+}
+
+func registerActiveJob(runID uint, job Job) {
+	for _, token := range []string{job.JobID, job.Name} {
+		if strings.TrimSpace(token) != "" {
+			activeJobs[activeJobKey(runID, token)] = job.ID
+		}
+	}
+}
+
 func refreshRunStatus(db *gorm.DB, runID uint) {
 	if runHasTerminalStatus(db, runID) {
 		return
@@ -57,12 +82,14 @@ func ParseLogLine(db *gorm.DB, runID uint, line string) {
 		return
 	}
 
-	jobName := matches[2]
+	jobName := strings.TrimSpace(matches[2])
+	if jobName == "" {
+		return
+	}
 	message := matches[3]
 
-	jobKey := fmt.Sprintf("%d-%s", runID, jobName)
 	if runHasTerminalStatus(db, runID) {
-		if jobID, exists := activeJobs[jobKey]; exists {
+		if jobID, exists := activeJobID(db, runID, jobName); exists {
 			if stepID, hasStep := activeSteps[jobID]; hasStep {
 				db.Create(&LogLine{StepID: stepID, Message: message})
 			}
@@ -71,16 +98,17 @@ func ParseLogLine(db *gorm.DB, runID uint, line string) {
 	}
 
 	var jobID uint
-	if id, exists := activeJobs[jobKey]; exists {
+	if id, exists := activeJobID(db, runID, jobName); exists {
 		jobID = id
 	} else {
 		job := Job{}
-		if err := db.Where("run_id = ? AND name = ?", runID, jobName).First(&job).Error; err != nil {
-			job = Job{RunID: runID, Name: jobName}
+		if err := db.Where("run_id = ? AND (job_id = ? OR name = ?)", runID, jobName, jobName).First(&job).Error; err != nil {
+			job = Job{RunID: runID, JobID: jobName, Name: jobName}
 			db.Create(&job)
 		}
 		jobID = job.ID
-		activeJobs[jobKey] = jobID
+		registerActiveJob(runID, job)
+		activeJobs[activeJobKey(runID, jobName)] = jobID
 	}
 	db.Model(&Job{}).Where("id = ? AND status IN ?", jobID, []string{"waiting", ""}).Update("status", "running")
 

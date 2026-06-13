@@ -18,11 +18,13 @@ type actionRunResponse struct {
 			ViewLink   string `json:"viewLink"`
 			WorkflowID string `json:"workflowID"`
 			Jobs       []struct {
-				ID    int      `json:"id"`
-				Link  string   `json:"link"`
-				JobID string   `json:"jobId"`
-				Name  string   `json:"name"`
-				Needs []string `json:"needs"`
+				ID       int      `json:"id"`
+				Link     string   `json:"link"`
+				JobID    string   `json:"jobId"`
+				Name     string   `json:"name"`
+				Status   string   `json:"status"`
+				Duration string   `json:"duration"`
+				Needs    []string `json:"needs"`
 			} `json:"jobs"`
 		} `json:"run"`
 		CurrentJob struct {
@@ -71,8 +73,8 @@ func createRunScenario(t *testing.T, db *gorm.DB) (Run, Job, Job) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	lint := Job{RunID: run.ID, Name: "lint", Status: "success"}
-	build := Job{RunID: run.ID, Name: "build", Status: "success", Needs: "lint"}
+	lint := Job{RunID: run.ID, JobID: "lint", Name: "Lint Code", Status: "success"}
+	build := Job{RunID: run.ID, JobID: "build", Name: "Build Artifacts", Status: "success", Needs: "lint"}
 	if err := db.Create(&lint).Error; err != nil {
 		t.Fatalf("create lint job: %v", err)
 	}
@@ -150,6 +152,9 @@ func TestActionAPIExposesWorkflowRunsJobsAndCursorLogs(t *testing.T) {
 	if summary.State.Run.Jobs[0].JobID != "lint" {
 		t.Fatalf("summary first job ID = %q, want lint", summary.State.Run.Jobs[0].JobID)
 	}
+	if summary.State.Run.Jobs[0].Name != "Lint Code" {
+		t.Fatalf("summary first job name = %q, want Lint Code", summary.State.Run.Jobs[0].Name)
+	}
 	if summary.State.Run.Jobs[1].ID != int(build.ID) {
 		t.Fatalf("summary second job = %#v", summary.State.Run.Jobs[1])
 	}
@@ -159,8 +164,8 @@ func TestActionAPIExposesWorkflowRunsJobsAndCursorLogs(t *testing.T) {
 
 	body := []byte(`{"logCursors":[{"step":0,"cursor":1,"expanded":true}]}`)
 	job := decodeActionRun(t, mux, http.MethodPost, fmt.Sprintf("/api/runs/%d/jobs/%d", run.ID, lint.ID), body)
-	if job.State.CurrentJob.Title != "lint" {
-		t.Fatalf("current job title = %q, want lint", job.State.CurrentJob.Title)
+	if job.State.CurrentJob.Title != "Lint Code" {
+		t.Fatalf("current job title = %q, want Lint Code", job.State.CurrentJob.Title)
 	}
 	if len(job.State.CurrentJob.Steps) != 1 || job.State.CurrentJob.Steps[0].Summary != "Main Run Linter" {
 		t.Fatalf("current job steps = %#v", job.State.CurrentJob.Steps)
@@ -170,6 +175,69 @@ func TestActionAPIExposesWorkflowRunsJobsAndCursorLogs(t *testing.T) {
 	}
 	if len(job.Logs.StepsLog[0].Lines) != 1 || job.Logs.StepsLog[0].Lines[0].Index != 2 || job.Logs.StepsLog[0].Lines[0].Message != "second log line" {
 		t.Fatalf("cursor-filtered lines = %#v", job.Logs.StepsLog[0].Lines)
+	}
+}
+
+func TestActionAPIDoesNotStartDurationForUnstartedJobs(t *testing.T) {
+	db := newTestDB(t)
+	run := Run{Name: "act push", Workflow: "src/testdata/workflows/test.yml", Event: "push", Status: "running"}
+	if err := db.Create(&run).Error; err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	waiting := Job{RunID: run.ID, JobID: "deploy", Name: "Deploy", Status: "waiting"}
+	if err := db.Create(&waiting).Error; err != nil {
+		t.Fatalf("create waiting job: %v", err)
+	}
+	mux := serveTestAPI(db)
+
+	summary := decodeActionRun(t, mux, http.MethodPost, fmt.Sprintf("/api/runs/%d", run.ID), nil)
+	if summary.State.Run.Jobs[0].Duration != "" {
+		t.Fatalf("waiting job duration = %q, want empty", summary.State.Run.Jobs[0].Duration)
+	}
+
+	finishRun(db, run.ID, "success")
+	summary = decodeActionRun(t, mux, http.MethodPost, fmt.Sprintf("/api/runs/%d", run.ID), nil)
+	if summary.State.Run.Jobs[0].Status != "skipped" {
+		t.Fatalf("job status = %q, want skipped", summary.State.Run.Jobs[0].Status)
+	}
+	if summary.State.Run.Jobs[0].Duration != "" {
+		t.Fatalf("skipped job duration = %q, want empty", summary.State.Run.Jobs[0].Duration)
+	}
+}
+
+func TestActionAPIInfersLegacyJobIDsFromNeeds(t *testing.T) {
+	db := newTestDB(t)
+	run := Run{Name: "act push", Workflow: ".github/workflows/ci.yml", Event: "push", Status: "cancelled"}
+	if err := db.Create(&run).Error; err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	testJob := Job{RunID: run.ID, Name: "Test", Status: "cancelled"}
+	releaseJob := Job{RunID: run.ID, Name: "Release", Status: "cancelled", Needs: "test"}
+	deployJob := Job{RunID: run.ID, Name: "Deploy", Status: "cancelled", Needs: "release"}
+	for _, job := range []*Job{&testJob, &releaseJob, &deployJob} {
+		if err := db.Create(job).Error; err != nil {
+			t.Fatalf("create job: %v", err)
+		}
+	}
+	mux := serveTestAPI(db)
+
+	summary := decodeActionRun(t, mux, http.MethodPost, fmt.Sprintf("/api/runs/%d", run.ID), nil)
+	if summary.State.Run.Jobs[0].JobID != "test" {
+		t.Fatalf("legacy upstream job ID = %q, want test", summary.State.Run.Jobs[0].JobID)
+	}
+	if summary.State.Run.Jobs[1].JobID != "release" {
+		t.Fatalf("legacy middle job ID = %q, want release", summary.State.Run.Jobs[1].JobID)
+	}
+	if len(summary.State.Run.Jobs[1].Needs) != 1 || summary.State.Run.Jobs[1].Needs[0] != "test" {
+		t.Fatalf("legacy middle needs = %#v, want [test]", summary.State.Run.Jobs[1].Needs)
+	}
+	if len(summary.State.Run.Jobs[2].Needs) != 1 || summary.State.Run.Jobs[2].Needs[0] != "release" {
+		t.Fatalf("legacy downstream needs = %#v, want [release]", summary.State.Run.Jobs[2].Needs)
+	}
+	for _, job := range summary.State.Run.Jobs {
+		if job.Duration != "" {
+			t.Fatalf("legacy unstarted job %q duration = %q, want empty", job.Name, job.Duration)
+		}
 	}
 }
 

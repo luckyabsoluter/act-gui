@@ -45,11 +45,11 @@ func TestBuildStartRunPayloadPreservesWorkflowFlag(t *testing.T) {
 	if len(payload.Jobs) != 5 {
 		t.Fatalf("Jobs length = %d, want 5", len(payload.Jobs))
 	}
-	if payload.Jobs[0].Name != "lint" {
-		t.Fatalf("Jobs[0].Name = %q, want lint", payload.Jobs[0].Name)
+	if payload.Jobs[0].JobID != "lint" || payload.Jobs[0].Name != "Lint Code" {
+		t.Fatalf("Jobs[0] = %#v, want lint job ID and Lint Code name", payload.Jobs[0])
 	}
-	if payload.Jobs[1].Name != "build" || len(payload.Jobs[1].Needs) != 1 || payload.Jobs[1].Needs[0] != "lint" {
-		t.Fatalf("Jobs[1] = %#v, want build needing lint", payload.Jobs[1])
+	if payload.Jobs[1].JobID != "build" || payload.Jobs[1].Name != "Build Artifacts" || len(payload.Jobs[1].Needs) != 1 || payload.Jobs[1].Needs[0] != "lint" {
+		t.Fatalf("Jobs[1] = %#v, want build job ID with Build Artifacts name needing lint", payload.Jobs[1])
 	}
 }
 

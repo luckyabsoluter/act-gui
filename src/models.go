@@ -16,6 +16,7 @@ type Run struct {
 type Job struct {
 	gorm.Model
 	RunID  uint
+	JobID  string
 	Name   string
 	Status string `gorm:"default:running"` // running, success, failure, cancelled
 	Needs  string

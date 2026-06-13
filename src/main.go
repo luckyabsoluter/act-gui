@@ -42,6 +42,7 @@ var (
 
 const (
 	internalDaemonFlag = "--act-gui-daemon"
+	internalRunnerFlag = "--act-gui-runner"
 	actGUIPortFlag     = "--act-gui-port"
 	defaultDaemonPort  = "27979"
 	daemonHost         = "localhost"
@@ -293,31 +294,36 @@ type FinishRunPayload struct {
 	Status string `json:"status"`
 }
 
-func pipeToDaemon(r *os.File, original io.Writer, client *http.Client, baseURL string, runID uint) {
+func pipeToDaemon(r io.Reader, original io.Writer, client *http.Client, baseURL string, runID uint) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
 		fmt.Fprintln(original, line)
-		go func(l string) {
-			payload := LogPayload{RunID: runID, Message: l}
-			b, _ := json.Marshal(payload)
-			resp, err := client.Post(baseURL+"/log", "application/json", bytes.NewBuffer(b))
-			if err == nil {
-				resp.Body.Close()
-			}
-		}(line)
+		payload := LogPayload{RunID: runID, Message: line}
+		b, _ := json.Marshal(payload)
+		resp, err := client.Post(baseURL+"/log", "application/json", bytes.NewBuffer(b))
+		if err == nil {
+			resp.Body.Close()
+		}
 	}
 }
 
-func postFinishRun(client *http.Client, baseURL string, runID uint, status string) {
+func postFinishRun(client *http.Client, baseURL string, runID uint, status string) error {
 	if runID == 0 {
-		return
+		return nil
 	}
 	finishPayload, _ := json.Marshal(FinishRunPayload{RunID: runID, Status: status})
-	resp, err := client.Post(baseURL+"/run/finish", "application/json", bytes.NewBuffer(finishPayload))
-	if err == nil {
-		resp.Body.Close()
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		resp, err := client.Post(baseURL+"/run/finish", "application/json", bytes.NewBuffer(finishPayload))
+		if err == nil {
+			resp.Body.Close()
+			return nil
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
 	}
+	return lastErr
 }
 
 func watchRunCancellation(ctx context.Context, finish func(string)) func() {
@@ -341,6 +347,64 @@ func runCompletionStatus(ctx context.Context) string {
 	return "success"
 }
 
+func runActChild(ctx context.Context, actArgs []string, stdout io.Writer, stderr io.Writer, client *http.Client, baseURL string, runID uint) (string, int) {
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(stderr, "act-gui: %v\n", err)
+		return "failure", 1
+	}
+
+	cmdArgs := append([]string{internalRunnerFlag}, actArgs...)
+	cmd := exec.CommandContext(ctx, exe, cmdArgs...)
+	cmd.Stdin = os.Stdin
+
+	childStdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(stderr, "act-gui: %v\n", err)
+		return "failure", 1
+	}
+	childStderr, err := cmd.StderrPipe()
+	if err != nil {
+		fmt.Fprintf(stderr, "act-gui: %v\n", err)
+		return "failure", 1
+	}
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(stderr, "act-gui: %v\n", err)
+		return "failure", 1
+	}
+
+	var pipeWG sync.WaitGroup
+	pipeWG.Add(2)
+	go func() {
+		defer pipeWG.Done()
+		pipeToDaemon(childStdout, stdout, client, baseURL, runID)
+	}()
+	go func() {
+		defer pipeWG.Done()
+		pipeToDaemon(childStderr, stderr, client, baseURL, runID)
+	}()
+
+	err = cmd.Wait()
+	pipeWG.Wait()
+
+	status := runCompletionStatus(ctx)
+	exitCode := 0
+	if err != nil {
+		status = "failure"
+		exitCode = 1
+		if ctx.Err() != nil {
+			status = "cancelled"
+		}
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			fmt.Fprintf(stderr, "act-gui: %v\n", err)
+		}
+	}
+	return status, exitCode
+}
+
 func main() {
 	port, actArgs, err := parseActGUIArgs(os.Args[1:])
 	if err != nil {
@@ -348,6 +412,14 @@ func main() {
 		os.Exit(2)
 	}
 	baseURL := daemonBaseURL(port)
+
+	if len(actArgs) > 0 && actArgs[0] == internalRunnerFlag {
+		ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stopSignals()
+		os.Args = append([]string{os.Args[0]}, actArgs[1:]...)
+		actcmd.Execute(ctx, ActGUIVersion)
+		return
+	}
 
 	if len(actArgs) > 0 && actArgs[0] == internalDaemonFlag {
 		dbPath, err := actGUIDatabasePath()
@@ -380,12 +452,21 @@ func main() {
 			}
 			db.Create(&run)
 			for _, jobPayload := range payload.Jobs {
-				if jobPayload.Name == "" {
+				jobID := jobPayload.JobID
+				if jobID == "" {
+					jobID = jobPayload.Name
+				}
+				if jobID == "" {
 					continue
+				}
+				name := jobPayload.Name
+				if name == "" {
+					name = jobID
 				}
 				job := Job{
 					RunID:  run.ID,
-					Name:   jobPayload.Name,
+					JobID:  jobID,
+					Name:   name,
 					Status: "waiting",
 					Needs:  encodeNeeds(jobPayload.Needs),
 				}
@@ -489,35 +570,22 @@ func main() {
 		runID = startResp.RunID
 	}
 
-	oldStdout := os.Stdout
-	oldStderr := os.Stderr
-
-	rOut, wOut, _ := os.Pipe()
-	rErr, wErr, _ := os.Pipe()
-
-	os.Stdout = wOut
-	os.Stderr = wErr
-
-	go pipeToDaemon(rOut, oldStdout, client, baseURL, runID)
-	go pipeToDaemon(rErr, oldStderr, client, baseURL, runID)
-
 	finishOnce := sync.Once{}
 	finish := func(status string) {
 		finishOnce.Do(func() {
-			postFinishRun(client, baseURL, runID, status)
+			if err := postFinishRun(client, baseURL, runID, status); err != nil {
+				fmt.Fprintf(os.Stderr, "act-gui: failed to finish run: %v\n", err)
+			}
 		})
 	}
 
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
-	stopCancellationWatch := watchRunCancellation(ctx, finish)
 
-	os.Args = append([]string{os.Args[0]}, actArgs...)
-	actcmd.Execute(ctx, ActGUIVersion)
-	stopCancellationWatch()
-
-	wOut.Close()
-	wErr.Close()
-	finish(runCompletionStatus(ctx))
+	status, exitCode := runActChild(ctx, actArgs, os.Stdout, os.Stderr, client, baseURL, runID)
+	finish(status)
 	time.Sleep(200 * time.Millisecond)
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
 }
