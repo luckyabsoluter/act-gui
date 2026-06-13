@@ -61,7 +61,8 @@ The frontend is built under `src/ui` and embedded into the Go executable from `s
 cd src/ui
 npm run build
 cd ../..
-go build -o act-gui ./src
+version="$(go run ./tools/buildversion)"
+go build -ldflags "-X main.ActGUIVersion=${version}" -o act-gui ./src
 ```
 
 For logic that can be isolated from Vue components, put it in a plain TypeScript module and cover it with `npm test`. This keeps UI regressions testable without adding a browser test framework for every small state calculation.

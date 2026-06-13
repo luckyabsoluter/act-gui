@@ -15,7 +15,8 @@ After rebuilding the frontend, rebuild the root executable:
 
 ```bash
 cd ../..
-go build -o act-gui ./src
+version="$(go run ./tools/buildversion)"
+go build -ldflags "-X main.ActGUIVersion=${version}" -o act-gui ./src
 ```
 
 ## Notes

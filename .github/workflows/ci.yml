@@ -49,7 +49,9 @@ jobs:
         run: go test ./...
 
       - name: Build Go
-        run: go build -o act-gui ./src
+        run: |
+          version="$(go run ./tools/buildversion)"
+          go build -ldflags "-X main.ActGUIVersion=${version}" -o act-gui ./src
 
       - name: Smoke test binary
         run: ./act-gui --help

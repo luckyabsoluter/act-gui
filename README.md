@@ -84,7 +84,8 @@ cd src/ui
 npm test
 npm run build
 cd ../..
-go build -o act-gui ./src
+version="$(go run ./tools/buildversion)"
+go build -ldflags "-X main.ActGUIVersion=${version}" -o act-gui ./src
 ```
 
 Application source lives under `src`. Frontend source lives under `src/ui`. The production frontend bundle is built to `src/ui/dist` and embedded into the Go executable.

@@ -55,7 +55,6 @@ var ActGUIVersion = "act-gui dev"
 type DaemonInfo struct {
 	Protocol int    `json:"protocol"`
 	Version  string `json:"version"`
-	BuildID  string `json:"build_id"`
 	PID      int    `json:"pid"`
 }
 
@@ -109,23 +108,10 @@ Examples:
 `)
 }
 
-func daemonBuildID() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "unknown"
-	}
-	info, err := os.Stat(exe)
-	if err != nil {
-		return "unknown"
-	}
-	return fmt.Sprintf("%s:%d:%d", filepath.Clean(exe), info.Size(), info.ModTime().UTC().UnixNano())
-}
-
 func currentDaemonInfo() DaemonInfo {
 	return DaemonInfo{
 		Protocol: daemonProtocol,
 		Version:  ActGUIVersion,
-		BuildID:  daemonBuildID(),
 		PID:      os.Getpid(),
 	}
 }
@@ -244,10 +230,6 @@ func probeDaemon(client *http.Client, baseURL string) (DaemonInfo, bool, error) 
 	}
 	if info.Version != ActGUIVersion {
 		return info, true, fmt.Errorf("daemon version %q does not match client version %q", info.Version, ActGUIVersion)
-	}
-	expectedBuildID := daemonBuildID()
-	if info.BuildID != expectedBuildID {
-		return info, true, fmt.Errorf("daemon build %q does not match client build %q", info.BuildID, expectedBuildID)
 	}
 	return info, true, nil
 }

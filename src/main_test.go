@@ -238,10 +238,10 @@ func TestProbeDaemonRejectsProtocolMismatch(t *testing.T) {
 	}
 }
 
-func TestProbeDaemonRejectsBuildMismatch(t *testing.T) {
+func TestProbeDaemonRejectsVersionMismatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		info := currentDaemonInfo()
-		info.BuildID = "old-build"
+		info.Version = "act-gui-dev-old"
 		json.NewEncoder(w).Encode(info)
 	}))
 	defer server.Close()
@@ -252,10 +252,10 @@ func TestProbeDaemonRejectsBuildMismatch(t *testing.T) {
 		t.Fatal("probeDaemon reachable = false, want true")
 	}
 	if err == nil {
-		t.Fatal("probeDaemon returned nil error for build mismatch")
+		t.Fatal("probeDaemon returned nil error for version mismatch")
 	}
-	if !strings.Contains(err.Error(), "does not match client build") {
-		t.Fatalf("probeDaemon error = %q, want build mismatch", err.Error())
+	if !strings.Contains(err.Error(), "does not match client version") {
+		t.Fatalf("probeDaemon error = %q, want version mismatch", err.Error())
 	}
 }
 
