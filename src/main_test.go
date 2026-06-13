@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -110,6 +111,67 @@ func TestParseActGUIArgsRejectsInvalidPort(t *testing.T) {
 				t.Fatalf("parseActGUIArgs(%#v) returned nil error", args)
 			}
 		})
+	}
+}
+
+func TestActGUIHelpRequested(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "long help", args: []string{"--help"}, want: true},
+		{name: "short help", args: []string{"-h"}, want: true},
+		{name: "help after act args", args: []string{"-W", "src/testdata/workflows/test.yml", "--help"}, want: true},
+		{name: "after separator", args: []string{"--", "--help"}, want: false},
+		{name: "act help", args: []string{"--act-help"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := actGUIHelpRequested(tt.args); got != tt.want {
+				t.Fatalf("actGUIHelpRequested(%#v) = %t, want %t", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestActHelpRequested(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "act help", args: []string{"--act-help"}, want: true},
+		{name: "act help after act args", args: []string{"-W", "src/testdata/workflows/test.yml", "--act-help"}, want: true},
+		{name: "after separator", args: []string{"--", "--act-help"}, want: false},
+		{name: "act gui help", args: []string{"--help"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := actHelpRequested(tt.args); got != tt.want {
+				t.Fatalf("actHelpRequested(%#v) = %t, want %t", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPrintActGUIHelp(t *testing.T) {
+	var buf bytes.Buffer
+	printActGUIHelp(&buf)
+	help := buf.String()
+
+	for _, want := range []string{
+		"act-gui [act-gui options] [act options] [event]",
+		"Any act options and event arguments can be passed after act-gui options.",
+		"--act-gui-port <port>",
+		"--act-help",
+		"-h, --help",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("act-gui help does not contain %q:\n%s", want, help)
+		}
 	}
 }
 

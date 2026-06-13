@@ -44,6 +44,7 @@ const (
 	internalDaemonFlag = "--act-gui-daemon"
 	internalRunnerFlag = "--act-gui-runner"
 	actGUIPortFlag     = "--act-gui-port"
+	actHelpFlag        = "--act-help"
 	defaultDaemonPort  = "27979"
 	daemonHost         = "localhost"
 	daemonProtocol     = 1
@@ -60,6 +61,52 @@ type DaemonInfo struct {
 
 func daemonBaseURL(port string) string {
 	return "http://" + daemonHost + ":" + port
+}
+
+func actGUIHelpRequested(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == "--help" || arg == "-h" {
+			return true
+		}
+	}
+	return false
+}
+
+func actHelpRequested(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == actHelpFlag {
+			return true
+		}
+	}
+	return false
+}
+
+func printActGUIHelp(w io.Writer) {
+	fmt.Fprint(w, `act-gui runs GitHub Actions workflows through act and shows a local web UI.
+
+Usage:
+  act-gui [act-gui options] [act options] [event]
+
+Act arguments:
+  Any act options and event arguments can be passed after act-gui options.
+  Use --act-help to inspect the underlying act options.
+
+Act-gui options:
+  --act-gui-port <port>  Run or connect to the local act-gui daemon on this port.
+  --act-help             Show act help.
+  -h, --help             Show act-gui help.
+
+Examples:
+  act-gui -W src/testdata/workflows/test.yml
+  act-gui --act-gui-port 27979 -W src/testdata/workflows/test.yml
+  act-gui --act-help
+`)
 }
 
 func daemonBuildID() string {
@@ -481,6 +528,19 @@ func main() {
 		ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stopSignals()
 		os.Args = append([]string{os.Args[0]}, actArgs[1:]...)
+		actcmd.Execute(ctx, ActGUIVersion)
+		return
+	}
+
+	if actGUIHelpRequested(actArgs) {
+		printActGUIHelp(os.Stdout)
+		return
+	}
+
+	if actHelpRequested(actArgs) {
+		ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stopSignals()
+		os.Args = []string{os.Args[0], "--help"}
 		actcmd.Execute(ctx, ActGUIVersion)
 		return
 	}
