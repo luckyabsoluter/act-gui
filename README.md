@@ -4,10 +4,6 @@ act-gui is a local web UI for running GitHub Actions workflows through [`act`](h
 
 It keeps act-compatible command-line arguments, starts or connects to a local daemon, and shows workflow runs in a GitHub Actions-like interface with workflows, runs, jobs, steps, logs, status, and run history management.
 
-## Status
-
-This project is under active development. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for architecture and maintenance details.
-
 ## Usage
 
 Run act-gui with act-compatible arguments:
@@ -73,6 +69,8 @@ Use `Manage` in the UI to reveal:
 Deletion actions use in-app confirmation dialogs instead of browser-native alert, prompt, or confirm dialogs.
 
 ## Development
+
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
 Common checks:
 
