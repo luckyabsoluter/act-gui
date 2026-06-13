@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
       <div class="header-stats" aria-label="Run status">
         <span class="stat-pill">
           <SvgIcon name="octicon-repo" :size="14"/>
-          localhost:18080
+          localhost:27979
         </span>
         <span class="stat-pill strong">{{ runs.length }} runs</span>
         <span class="stat-pill">{{ totalJobs }} jobs</span>

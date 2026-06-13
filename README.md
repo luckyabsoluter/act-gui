@@ -25,7 +25,7 @@ Use `--act-gui-port` to run or connect to the local daemon on a different port:
 On startup, act-gui prints the web server address:
 
 ```text
-act-gui server: http://localhost:18080
+act-gui server: http://localhost:27979
 ```
 
 Open that address to inspect workflows, runs, jobs, steps, and logs.
@@ -37,10 +37,10 @@ act-gui uses a local daemon for the web server and runtime state. A normal CLI i
 The daemon listens on:
 
 ```text
-http://localhost:18080
+http://localhost:27979
 ```
 
-The default port is `18080`. Use `--act-gui-port <port>` to select another daemon port for both the CLI invocation and the daemon it starts.
+The default port is `27979`. Use `--act-gui-port <port>` to select another daemon port for both the CLI invocation and the daemon it starts.
 
 The internal daemon flag is reserved for act-gui itself:
 

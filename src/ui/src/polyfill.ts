@@ -1,5 +1,5 @@
 (window as any).config = {
-  appUrl: 'http://localhost:18080/',
+  appUrl: 'http://localhost:27979/',
   appSubUrl: '',
   assetUrlPrefix: '',
   i18n: {

@@ -43,7 +43,7 @@ var (
 const (
 	internalDaemonFlag = "--act-gui-daemon"
 	actGUIPortFlag     = "--act-gui-port"
-	defaultDaemonPort  = "18080"
+	defaultDaemonPort  = "27979"
 	daemonHost         = "localhost"
 )
 

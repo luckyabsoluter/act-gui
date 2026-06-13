@@ -58,8 +58,8 @@ func TestParseActGUIArgsUsesDefaultPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseActGUIArgs returned error: %v", err)
 	}
-	if port != "18080" {
-		t.Fatalf("port = %q, want 18080", port)
+	if port != "27979" {
+		t.Fatalf("port = %q, want 27979", port)
 	}
 	if len(actArgs) != 2 || actArgs[0] != "-W" || actArgs[1] != "src/testdata/workflows/test.yml" {
 		t.Fatalf("actArgs = %#v", actArgs)
@@ -67,12 +67,12 @@ func TestParseActGUIArgsUsesDefaultPort(t *testing.T) {
 }
 
 func TestParseActGUIArgsStripsPortFlag(t *testing.T) {
-	port, actArgs, err := parseActGUIArgs([]string{"--act-gui-port", "27979", "-W", "src/testdata/workflows/test.yml"})
+	port, actArgs, err := parseActGUIArgs([]string{"--act-gui-port", "28000", "-W", "src/testdata/workflows/test.yml"})
 	if err != nil {
 		t.Fatalf("parseActGUIArgs returned error: %v", err)
 	}
-	if port != "27979" {
-		t.Fatalf("port = %q, want 27979", port)
+	if port != "28000" {
+		t.Fatalf("port = %q, want 28000", port)
 	}
 	if len(actArgs) != 2 || actArgs[0] != "-W" || actArgs[1] != "src/testdata/workflows/test.yml" {
 		t.Fatalf("actArgs = %#v", actArgs)
@@ -80,12 +80,12 @@ func TestParseActGUIArgsStripsPortFlag(t *testing.T) {
 }
 
 func TestParseActGUIArgsStripsEqualsPortFlag(t *testing.T) {
-	port, actArgs, err := parseActGUIArgs([]string{"--act-gui-port=27979", "workflow_dispatch"})
+	port, actArgs, err := parseActGUIArgs([]string{"--act-gui-port=28000", "workflow_dispatch"})
 	if err != nil {
 		t.Fatalf("parseActGUIArgs returned error: %v", err)
 	}
-	if port != "27979" {
-		t.Fatalf("port = %q, want 27979", port)
+	if port != "28000" {
+		t.Fatalf("port = %q, want 28000", port)
 	}
 	if len(actArgs) != 1 || actArgs[0] != "workflow_dispatch" {
 		t.Fatalf("actArgs = %#v", actArgs)
