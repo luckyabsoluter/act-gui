@@ -46,12 +46,41 @@ const (
 	actGUIPortFlag     = "--act-gui-port"
 	defaultDaemonPort  = "27979"
 	daemonHost         = "localhost"
+	daemonProtocol     = 1
 )
 
 var ActGUIVersion = "act-gui dev"
 
+type DaemonInfo struct {
+	Protocol int    `json:"protocol"`
+	Version  string `json:"version"`
+	BuildID  string `json:"build_id"`
+	PID      int    `json:"pid"`
+}
+
 func daemonBaseURL(port string) string {
 	return "http://" + daemonHost + ":" + port
+}
+
+func daemonBuildID() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "unknown"
+	}
+	info, err := os.Stat(exe)
+	if err != nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("%s:%d:%d", filepath.Clean(exe), info.Size(), info.ModTime().UTC().UnixNano())
+}
+
+func currentDaemonInfo() DaemonInfo {
+	return DaemonInfo{
+		Protocol: daemonProtocol,
+		Version:  ActGUIVersion,
+		BuildID:  daemonBuildID(),
+		PID:      os.Getpid(),
+	}
 }
 
 func validateDaemonPort(port string) (string, error) {
@@ -149,14 +178,46 @@ func broadcast(msg []byte) {
 	}
 }
 
-func isDaemonRunning(baseURL string) bool {
-	client := http.Client{Timeout: 1 * time.Second}
+func probeDaemon(client *http.Client, baseURL string) (DaemonInfo, bool, error) {
 	resp, err := client.Get(baseURL + "/ping")
 	if err != nil {
-		return false
+		return DaemonInfo{}, false, err
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == 200
+	if resp.StatusCode != http.StatusOK {
+		return DaemonInfo{}, true, fmt.Errorf("ping returned HTTP %d", resp.StatusCode)
+	}
+
+	var info DaemonInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return DaemonInfo{}, true, fmt.Errorf("unsupported daemon response; expected act-gui daemon protocol %d", daemonProtocol)
+	}
+	if info.Protocol != daemonProtocol {
+		return info, true, fmt.Errorf("daemon protocol %d does not match required protocol %d", info.Protocol, daemonProtocol)
+	}
+	if info.Version != ActGUIVersion {
+		return info, true, fmt.Errorf("daemon version %q does not match client version %q", info.Version, ActGUIVersion)
+	}
+	expectedBuildID := daemonBuildID()
+	if info.BuildID != expectedBuildID {
+		return info, true, fmt.Errorf("daemon build %q does not match client build %q", info.BuildID, expectedBuildID)
+	}
+	return info, true, nil
+}
+
+func ensureDaemon(baseURL string, port string) error {
+	client := &http.Client{Timeout: 1 * time.Second}
+	if _, reachable, err := probeDaemon(client, baseURL); err == nil {
+		return nil
+	} else if reachable {
+		return fmt.Errorf("incompatible act-gui daemon at %s: %w; stop the old daemon or use %s to select another port", baseURL, err, actGUIPortFlag)
+	}
+
+	fmt.Println("Daemon not found, starting a new daemon...")
+	if err := startDaemon(baseURL, port); err != nil {
+		return err
+	}
+	return nil
 }
 
 func startDaemon(baseURL string, port string) error {
@@ -169,9 +230,12 @@ func startDaemon(baseURL string, port string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	client := &http.Client{Timeout: 1 * time.Second}
 	for i := 0; i < 15; i++ {
-		if isDaemonRunning(baseURL) {
+		if _, reachable, err := probeDaemon(client, baseURL); err == nil {
 			return nil
+		} else if reachable {
+			return err
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -437,7 +501,8 @@ func main() {
 		fmt.Println("Using data directory " + filepath.Dir(dbPath))
 
 		http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("pong"))
+			setAPIHeaders(w)
+			json.NewEncoder(w).Encode(currentDaemonInfo())
 		})
 
 		http.HandleFunc("/run/start", func(w http.ResponseWriter, r *http.Request) {
@@ -544,19 +609,18 @@ func main() {
 			fsHandler.ServeHTTP(w, r)
 		})
 
-		http.ListenAndServe(":"+port, nil)
+		if err := http.ListenAndServe(":"+port, nil); err != nil {
+			fmt.Fprintf(os.Stderr, "act-gui daemon: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
-	if !isDaemonRunning(baseURL) {
-		fmt.Println("Daemon not found, starting a new daemon...")
-		if err := startDaemon(baseURL, port); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to start act-gui daemon: %v\n", err)
-		}
+	if err := ensureDaemon(baseURL, port); err != nil {
+		fmt.Fprintf(os.Stderr, "act-gui: %v\n", err)
+		os.Exit(1)
 	}
-	if isDaemonRunning(baseURL) {
-		fmt.Println("act-gui server: " + baseURL)
-	}
+	fmt.Println("act-gui server: " + baseURL)
 
 	client := &http.Client{Timeout: 2 * time.Second}
 

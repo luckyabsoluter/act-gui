@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInferActEvent(t *testing.T) {
@@ -106,6 +110,90 @@ func TestParseActGUIArgsRejectsInvalidPort(t *testing.T) {
 				t.Fatalf("parseActGUIArgs(%#v) returned nil error", args)
 			}
 		})
+	}
+}
+
+func TestProbeDaemonAcceptsCompatibleDaemon(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ping" {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode(currentDaemonInfo())
+	}))
+	defer server.Close()
+
+	client := &http.Client{Timeout: time.Second}
+	info, reachable, err := probeDaemon(client, server.URL)
+	if err != nil {
+		t.Fatalf("probeDaemon returned error: %v", err)
+	}
+	if !reachable {
+		t.Fatal("probeDaemon reachable = false, want true")
+	}
+	if info.Protocol != daemonProtocol || info.Version != ActGUIVersion {
+		t.Fatalf("daemon info = %#v, want protocol %d version %q", info, daemonProtocol, ActGUIVersion)
+	}
+}
+
+func TestProbeDaemonRejectsLegacyPong(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("pong"))
+	}))
+	defer server.Close()
+
+	client := &http.Client{Timeout: time.Second}
+	_, reachable, err := probeDaemon(client, server.URL)
+	if !reachable {
+		t.Fatal("probeDaemon reachable = false, want true")
+	}
+	if err == nil {
+		t.Fatal("probeDaemon returned nil error for legacy pong")
+	}
+	if !strings.Contains(err.Error(), "unsupported daemon response") {
+		t.Fatalf("probeDaemon error = %q, want unsupported daemon response", err.Error())
+	}
+}
+
+func TestProbeDaemonRejectsProtocolMismatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		info := currentDaemonInfo()
+		info.Protocol++
+		json.NewEncoder(w).Encode(info)
+	}))
+	defer server.Close()
+
+	client := &http.Client{Timeout: time.Second}
+	_, reachable, err := probeDaemon(client, server.URL)
+	if !reachable {
+		t.Fatal("probeDaemon reachable = false, want true")
+	}
+	if err == nil {
+		t.Fatal("probeDaemon returned nil error for protocol mismatch")
+	}
+	if !strings.Contains(err.Error(), "does not match required protocol") {
+		t.Fatalf("probeDaemon error = %q, want protocol mismatch", err.Error())
+	}
+}
+
+func TestProbeDaemonRejectsBuildMismatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		info := currentDaemonInfo()
+		info.BuildID = "old-build"
+		json.NewEncoder(w).Encode(info)
+	}))
+	defer server.Close()
+
+	client := &http.Client{Timeout: time.Second}
+	_, reachable, err := probeDaemon(client, server.URL)
+	if !reachable {
+		t.Fatal("probeDaemon reachable = false, want true")
+	}
+	if err == nil {
+		t.Fatal("probeDaemon returned nil error for build mismatch")
+	}
+	if !strings.Contains(err.Error(), "does not match client build") {
+		t.Fatalf("probeDaemon error = %q, want build mismatch", err.Error())
 	}
 }
 
