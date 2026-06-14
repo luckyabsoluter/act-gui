@@ -177,7 +177,7 @@ func TestPrintActGUIHelp(t *testing.T) {
 
 func TestProbeDaemonAcceptsCompatibleDaemon(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ping" {
+		if r.URL.Path != "/version" {
 			http.NotFound(w, r)
 			return
 		}

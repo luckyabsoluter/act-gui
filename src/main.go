@@ -212,13 +212,13 @@ func broadcast(msg []byte) {
 }
 
 func probeDaemon(client *http.Client, baseURL string) (DaemonInfo, bool, error) {
-	resp, err := client.Get(baseURL + "/ping")
+	resp, err := client.Get(baseURL + "/version")
 	if err != nil {
 		return DaemonInfo{}, false, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return DaemonInfo{}, true, fmt.Errorf("ping returned HTTP %d", resp.StatusCode)
+		return DaemonInfo{}, true, fmt.Errorf("version endpoint returned HTTP %d", resp.StatusCode)
 	}
 
 	var info DaemonInfo
@@ -542,9 +542,12 @@ func main() {
 		fmt.Println("Starting daemon on " + baseURL)
 		fmt.Println("Using data directory " + filepath.Dir(dbPath))
 
-		http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		http.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 			setAPIHeaders(w)
 			json.NewEncoder(w).Encode(currentDaemonInfo())
+		})
+		http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
 		})
 
 		http.HandleFunc("/run/start", func(w http.ResponseWriter, r *http.Request) {
