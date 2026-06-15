@@ -157,6 +157,27 @@ func TestActHelpRequested(t *testing.T) {
 	}
 }
 
+func TestActGUIVersionRequested(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "version", args: []string{"--version"}, want: true},
+		{name: "version after act args", args: []string{"-W", "src/testdata/workflows/test.yml", "--version"}, want: true},
+		{name: "after separator", args: []string{"--", "--version"}, want: false},
+		{name: "act gui help", args: []string{"--help"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := actGUIVersionRequested(tt.args); got != tt.want {
+				t.Fatalf("actGUIVersionRequested(%#v) = %t, want %t", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestPrintActGUIHelp(t *testing.T) {
 	var buf bytes.Buffer
 	printActGUIHelp(&buf)
@@ -167,10 +188,30 @@ func TestPrintActGUIHelp(t *testing.T) {
 		"Any act options and event arguments can be passed after act-gui options.",
 		"--act-gui-port <port>",
 		"--act-help",
+		"--version",
 		"-h, --help",
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("act-gui help does not contain %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestPrintActGUIVersion(t *testing.T) {
+	var buf bytes.Buffer
+	printActGUIVersion(&buf)
+	version := buf.String()
+	actVersion := actLibraryVersion()
+	if actVersion == "unknown" {
+		t.Fatal("actLibraryVersion() = unknown")
+	}
+
+	for _, want := range []string{
+		"act-gui: " + ActGUIVersion,
+		"act library: " + actModulePath + " " + actVersion,
+	} {
+		if !strings.Contains(version, want) {
+			t.Fatalf("act-gui version does not contain %q:\n%s", want, version)
 		}
 	}
 }

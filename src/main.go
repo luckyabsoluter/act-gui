@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,6 +46,8 @@ const (
 	internalRunnerFlag = "--act-gui-runner"
 	actGUIPortFlag     = "--act-gui-port"
 	actHelpFlag        = "--act-help"
+	actGUIVersionFlag  = "--version"
+	actModulePath      = "github.com/nektos/act"
 	defaultDaemonPort  = "27979"
 	daemonHost         = "localhost"
 	daemonProtocol     = 1
@@ -86,6 +89,46 @@ func actHelpRequested(args []string) bool {
 	return false
 }
 
+func actGUIVersionRequested(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == actGUIVersionFlag {
+			return true
+		}
+	}
+	return false
+}
+
+func moduleVersion(module *debug.Module) string {
+	if module.Replace != nil && module.Replace.Version != "" {
+		return module.Replace.Version
+	}
+	if module.Version != "" {
+		return module.Version
+	}
+	return "unknown"
+}
+
+func actLibraryVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	for _, dep := range info.Deps {
+		if dep.Path == actModulePath {
+			return moduleVersion(dep)
+		}
+	}
+	return "unknown"
+}
+
+func printActGUIVersion(w io.Writer) {
+	fmt.Fprintf(w, "act-gui: %s\n", ActGUIVersion)
+	fmt.Fprintf(w, "act library: %s %s\n", actModulePath, actLibraryVersion())
+}
+
 func printActGUIHelp(w io.Writer) {
 	fmt.Fprint(w, `act-gui runs GitHub Actions workflows through act and shows a local web UI.
 
@@ -99,12 +142,14 @@ Act arguments:
 Act-gui options:
   --act-gui-port <port>  Run or connect to the local act-gui daemon on this port.
   --act-help             Show act help.
+  --version              Show act-gui and act library versions.
   -h, --help             Show act-gui help.
 
 Examples:
   act-gui -W src/testdata/workflows/test.yml
   act-gui --act-gui-port 27979 -W src/testdata/workflows/test.yml
   act-gui --act-help
+  act-gui --version
 `)
 }
 
@@ -516,6 +561,11 @@ func main() {
 
 	if actGUIHelpRequested(actArgs) {
 		printActGUIHelp(os.Stdout)
+		return
+	}
+
+	if actGUIVersionRequested(actArgs) {
+		printActGUIVersion(os.Stdout)
 		return
 	}
 

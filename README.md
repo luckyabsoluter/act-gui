@@ -16,6 +16,8 @@ Any act options and event arguments can be passed to act-gui.
 
 Use `--help` for act-gui options and `--act-help` for the underlying act help.
 
+Use `--version` to print the act-gui version and the act library version.
+
 Use `--act-gui-port` to run or connect to the local daemon on a different port:
 
 ```bash
