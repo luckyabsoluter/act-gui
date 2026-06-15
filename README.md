@@ -9,7 +9,7 @@ It keeps act-compatible command-line arguments, starts or connects to a local da
 Run act-gui with act-compatible arguments:
 
 ```bash
-./act-gui -W src/testdata/workflows/test.yml
+act-gui -W src/testdata/workflows/test.yml
 ```
 
 Any act options and event arguments can be passed to act-gui.
@@ -21,7 +21,7 @@ Use `--version` to print the act-gui version and the act library version.
 Use `--act-gui-port` to run or connect to the local daemon on a different port:
 
 ```bash
-./act-gui --act-gui-port 27979 -W src/testdata/workflows/test.yml
+act-gui --act-gui-port 27979
 ```
 
 On startup, act-gui prints the web server address:
@@ -47,7 +47,7 @@ The default port is `27979`. Use `--act-gui-port <port>` to select another daemo
 The internal daemon flag is reserved for act-gui itself:
 
 ```text
---act-gui-daemon
+act-gui --act-gui-daemon
 ```
 
 ## Runtime Data
