@@ -71,6 +71,76 @@ func TestParseActGUIArgsUsesDefaultPort(t *testing.T) {
 	}
 }
 
+func TestParseActGUIConfigUsesDefaultHostAndPort(t *testing.T) {
+	host, port, actArgs, err := parseActGUIConfig([]string{"-W", "src/testdata/workflows/test.yml"})
+	if err != nil {
+		t.Fatalf("parseActGUIConfig returned error: %v", err)
+	}
+	if host != "localhost" {
+		t.Fatalf("host = %q, want localhost", host)
+	}
+	if port != "27979" {
+		t.Fatalf("port = %q, want 27979", port)
+	}
+	if len(actArgs) != 2 || actArgs[0] != "-W" || actArgs[1] != "src/testdata/workflows/test.yml" {
+		t.Fatalf("actArgs = %#v", actArgs)
+	}
+}
+
+func TestParseActGUIConfigStripsHostFlag(t *testing.T) {
+	host, port, actArgs, err := parseActGUIConfig([]string{"--act-gui-host", "127.0.0.1", "--act-gui-port", "28000", "-W", "src/testdata/workflows/test.yml"})
+	if err != nil {
+		t.Fatalf("parseActGUIConfig returned error: %v", err)
+	}
+	if host != "127.0.0.1" {
+		t.Fatalf("host = %q, want 127.0.0.1", host)
+	}
+	if port != "28000" {
+		t.Fatalf("port = %q, want 28000", port)
+	}
+	if len(actArgs) != 2 || actArgs[0] != "-W" || actArgs[1] != "src/testdata/workflows/test.yml" {
+		t.Fatalf("actArgs = %#v", actArgs)
+	}
+}
+
+func TestParseActGUIConfigStripsEqualsHostFlag(t *testing.T) {
+	host, port, actArgs, err := parseActGUIConfig([]string{"--act-gui-host=127.0.0.1", "workflow_dispatch"})
+	if err != nil {
+		t.Fatalf("parseActGUIConfig returned error: %v", err)
+	}
+	if host != "127.0.0.1" {
+		t.Fatalf("host = %q, want 127.0.0.1", host)
+	}
+	if port != "27979" {
+		t.Fatalf("port = %q, want 27979", port)
+	}
+	if len(actArgs) != 1 || actArgs[0] != "workflow_dispatch" {
+		t.Fatalf("actArgs = %#v", actArgs)
+	}
+}
+
+func TestParseActGUIConfigRejectsInvalidHost(t *testing.T) {
+	tests := [][]string{
+		{"--act-gui-host"},
+		{"--act-gui-host="},
+		{"--act-gui-host", "http://localhost"},
+	}
+
+	for _, args := range tests {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			if _, _, _, err := parseActGUIConfig(args); err == nil {
+				t.Fatalf("parseActGUIConfig(%#v) returned nil error", args)
+			}
+		})
+	}
+}
+
+func TestDaemonBaseURLUsesHostAndPort(t *testing.T) {
+	if got := daemonBaseURL("127.0.0.1", "28000"); got != "http://127.0.0.1:28000" {
+		t.Fatalf("daemonBaseURL = %q, want http://127.0.0.1:28000", got)
+	}
+}
+
 func TestParseActGUIArgsStripsPortFlag(t *testing.T) {
 	port, actArgs, err := parseActGUIArgs([]string{"--act-gui-port", "28000", "-W", "src/testdata/workflows/test.yml"})
 	if err != nil {
@@ -186,6 +256,7 @@ func TestPrintActGUIHelp(t *testing.T) {
 	for _, want := range []string{
 		"act-gui [act-gui options] [act options] [event]",
 		"Any act options and event arguments can be passed after act-gui options.",
+		"--act-gui-host <host>",
 		"--act-gui-port <port>",
 		"--act-help",
 		"--version",

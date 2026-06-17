@@ -16,12 +16,12 @@ import (
 )
 
 func main() {
-	port, actArgs, err := parseActGUIArgs(os.Args[1:])
+	host, port, actArgs, err := parseActGUIConfig(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "act-gui: %v\n", err)
 		os.Exit(2)
 	}
-	baseURL := daemonBaseURL(port)
+	baseURL := daemonBaseURL(host, port)
 
 	if len(actArgs) > 0 && actArgs[0] == internalRunnerFlag {
 		ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -50,14 +50,14 @@ func main() {
 	}
 
 	if len(actArgs) > 0 && actArgs[0] == internalDaemonFlag {
-		if err := runDaemon(port, baseURL); err != nil {
+		if err := runDaemon(host, port, baseURL); err != nil {
 			fmt.Fprintf(os.Stderr, "act-gui daemon: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 
-	if err := ensureDaemon(baseURL, port); err != nil {
+	if err := ensureDaemon(baseURL, host, port); err != nil {
 		fmt.Fprintf(os.Stderr, "act-gui: %v\n", err)
 		os.Exit(1)
 	}

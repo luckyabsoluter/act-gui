@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -126,27 +127,27 @@ func probeDaemon(client *http.Client, baseURL string) (DaemonInfo, bool, error) 
 	return info, true, nil
 }
 
-func ensureDaemon(baseURL string, port string) error {
+func ensureDaemon(baseURL string, host string, port string) error {
 	client := &http.Client{Timeout: 1 * time.Second}
 	if _, reachable, err := probeDaemon(client, baseURL); err == nil {
 		return nil
 	} else if reachable {
-		return fmt.Errorf("incompatible act-gui daemon at %s: %w; stop the old daemon or use %s to select another port", baseURL, err, actGUIPortFlag)
+		return fmt.Errorf("incompatible act-gui daemon at %s: %w; stop the old daemon or use %s or %s to select another endpoint", baseURL, err, actGUIHostFlag, actGUIPortFlag)
 	}
 
 	fmt.Println("Daemon not found, starting a new daemon...")
-	if err := startDaemon(baseURL, port); err != nil {
+	if err := startDaemon(baseURL, host, port); err != nil {
 		return err
 	}
 	return nil
 }
 
-func startDaemon(baseURL string, port string) error {
+func startDaemon(baseURL string, host string, port string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, internalDaemonFlag, actGUIPortFlag, port)
+	cmd := exec.Command(exe, internalDaemonFlag, actGUIHostFlag, host, actGUIPortFlag, port)
 	configureDaemonCommand(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
@@ -163,7 +164,7 @@ func startDaemon(baseURL string, port string) error {
 	return fmt.Errorf("timeout waiting for daemon to start")
 }
 
-func runDaemon(port string, baseURL string) error {
+func runDaemon(host string, port string, baseURL string) error {
 	dbPath, err := actGUIDatabasePath()
 	if err != nil {
 		panic(err)
@@ -290,5 +291,5 @@ func runDaemon(port string, baseURL string) error {
 		fsHandler.ServeHTTP(w, r)
 	})
 
-	return http.ListenAndServe(":"+port, nil)
+	return http.ListenAndServe(net.JoinHostPort(host, port), nil)
 }

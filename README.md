@@ -18,6 +18,12 @@ Use `--help` for act-gui options and `--act-help` for the underlying act help.
 
 Use `--version` to print the act-gui version and the act library version.
 
+By default, the daemon binds to `localhost`. Use `--act-gui-host` to select another bind host:
+
+```bash
+act-gui --act-gui-host localhost
+```
+
 Use `--act-gui-port` to run or connect to the local daemon on a different port:
 
 ```bash
@@ -42,7 +48,7 @@ The daemon listens on:
 http://localhost:27979
 ```
 
-The default port is `27979`. Use `--act-gui-port <port>` to select another daemon port for both the CLI invocation and the daemon it starts.
+The default host is `localhost`, and the default port is `27979`. Use `--act-gui-host <host>` and `--act-gui-port <port>` to select another daemon endpoint for both the CLI invocation and the daemon it starts.
 
 The internal daemon flag is reserved for act-gui itself:
 

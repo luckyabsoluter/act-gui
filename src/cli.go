@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"net"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -11,19 +12,20 @@ import (
 const (
 	internalDaemonFlag = "--act-gui-daemon"
 	internalRunnerFlag = "--act-gui-runner"
+	actGUIHostFlag     = "--act-gui-host"
 	actGUIPortFlag     = "--act-gui-port"
 	actHelpFlag        = "--act-help"
 	actGUIVersionFlag  = "--version"
 	actModulePath      = "github.com/nektos/act"
+	defaultDaemonHost  = "localhost"
 	defaultDaemonPort  = "27979"
-	daemonHost         = "localhost"
 	daemonProtocol     = 1
 )
 
 var ActGUIVersion = "act-gui dev"
 
-func daemonBaseURL(port string) string {
-	return "http://" + daemonHost + ":" + port
+func daemonBaseURL(host string, port string) string {
+	return "http://" + net.JoinHostPort(host, port)
 }
 
 func actGUIHelpRequested(args []string) bool {
@@ -101,6 +103,7 @@ Act arguments:
   Use --act-help to inspect the underlying act options.
 
 Act-gui options:
+  --act-gui-host <host>  Run or connect to the local act-gui daemon on this host.
   --act-gui-port <port>  Run or connect to the local act-gui daemon on this port.
   --act-help             Show act help.
   --version              Show act-gui and act library versions.
@@ -122,7 +125,19 @@ func validateDaemonPort(port string) (string, error) {
 	return strconv.Itoa(n), nil
 }
 
-func parseActGUIArgs(args []string) (string, []string, error) {
+func validateDaemonHost(host string) (string, error) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return "", fmt.Errorf("%s requires a host value", actGUIHostFlag)
+	}
+	if strings.Contains(host, "://") || strings.ContainsAny(host, "/\\") {
+		return "", fmt.Errorf("%s must be a host name or IP address", actGUIHostFlag)
+	}
+	return host, nil
+}
+
+func parseActGUIConfig(args []string) (string, string, []string, error) {
+	host := defaultDaemonHost
 	port := defaultDaemonPort
 	actArgs := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -131,9 +146,21 @@ func parseActGUIArgs(args []string) (string, []string, error) {
 			actArgs = append(actArgs, args[i:]...)
 			break
 		}
+		if arg == actGUIHostFlag {
+			if i+1 >= len(args) {
+				return "", "", nil, fmt.Errorf("%s requires a host value", actGUIHostFlag)
+			}
+			host = args[i+1]
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, actGUIHostFlag+"=") {
+			host = strings.TrimPrefix(arg, actGUIHostFlag+"=")
+			continue
+		}
 		if arg == actGUIPortFlag {
 			if i+1 >= len(args) {
-				return "", nil, fmt.Errorf("%s requires a port value", actGUIPortFlag)
+				return "", "", nil, fmt.Errorf("%s requires a port value", actGUIPortFlag)
 			}
 			port = args[i+1]
 			i++
@@ -146,7 +173,19 @@ func parseActGUIArgs(args []string) (string, []string, error) {
 		actArgs = append(actArgs, arg)
 	}
 
-	port, err := validateDaemonPort(port)
+	host, err := validateDaemonHost(host)
+	if err != nil {
+		return "", "", nil, err
+	}
+	port, err = validateDaemonPort(port)
+	if err != nil {
+		return "", "", nil, err
+	}
+	return host, port, actArgs, nil
+}
+
+func parseActGUIArgs(args []string) (string, []string, error) {
+	_, port, actArgs, err := parseActGUIConfig(args)
 	if err != nil {
 		return "", nil, err
 	}
