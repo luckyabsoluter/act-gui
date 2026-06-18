@@ -371,6 +371,12 @@ func TestProbeDaemonRejectsVersionMismatch(t *testing.T) {
 	}
 }
 
+func TestWebsocketUpgraderUsesDefaultOriginCheck(t *testing.T) {
+	if upgrader.CheckOrigin != nil {
+		t.Fatal("upgrader.CheckOrigin is set, want nil default origin check")
+	}
+}
+
 func TestActGUIDataDirUsesPlatformDataDirectories(t *testing.T) {
 	env := map[string]string{
 		"APPDATA":       filepath.Join("C:", "Users", "tester", "AppData", "Roaming"),

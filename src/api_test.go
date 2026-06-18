@@ -59,6 +59,19 @@ func newTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func TestSetAPIHeadersDoesNotAllowWildcardOrigin(t *testing.T) {
+	rec := httptest.NewRecorder()
+
+	setAPIHeaders(rec)
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want empty", got)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+}
+
 func createRunScenario(t *testing.T, db *gorm.DB) (Run, Job, Job) {
 	t.Helper()
 	run := Run{
