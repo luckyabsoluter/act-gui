@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"os/exec"
 	"strings"
 )
@@ -100,7 +101,16 @@ func buildStartRunPayload(args []string) StartRunPayload {
 
 type LogPayload struct {
 	RunID   uint   `json:"run_id"`
-	Message string `json:"message"`
+	Stream  string `json:"stream,omitempty"`
+	Message string `json:"message,omitempty"`
+	Data    string `json:"data,omitempty"`
+}
+
+func (p LogPayload) chunk() ([]byte, error) {
+	if p.Data != "" {
+		return base64.StdEncoding.DecodeString(p.Data)
+	}
+	return []byte(p.Message), nil
 }
 
 type StartRunPayload struct {

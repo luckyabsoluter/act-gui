@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,17 +15,37 @@ import (
 	"time"
 )
 
-func pipeToDaemon(r io.Reader, original io.Writer, client *http.Client, baseURL string, runID uint) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := scanner.Text()
-		fmt.Fprintln(original, line)
-		payload := LogPayload{RunID: runID, Message: line}
-		b, _ := json.Marshal(payload)
-		resp, err := client.Post(baseURL+"/log", "application/json", bytes.NewBuffer(b))
-		if err == nil {
-			resp.Body.Close()
+const logChunkSize = 32 * 1024
+
+func pipeToDaemon(r io.Reader, original io.Writer, client *http.Client, baseURL string, runID uint, stream string) error {
+	buf := make([]byte, logChunkSize)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			chunk := append([]byte(nil), buf[:n]...)
+			_, _ = original.Write(chunk)
+			forwardLogChunk(client, baseURL, runID, stream, chunk)
 		}
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+}
+
+func forwardLogChunk(client *http.Client, baseURL string, runID uint, stream string, chunk []byte) {
+	payload := LogPayload{
+		RunID:  runID,
+		Stream: stream,
+		Data:   base64.StdEncoding.EncodeToString(chunk),
+	}
+	b, _ := json.Marshal(payload)
+	resp, err := client.Post(baseURL+"/log", "application/json", bytes.NewBuffer(b))
+	if err == nil {
+		resp.Body.Close()
 	}
 }
 
@@ -98,11 +119,15 @@ func runActChild(ctx context.Context, actArgs []string, stdout io.Writer, stderr
 	pipeWG.Add(2)
 	go func() {
 		defer pipeWG.Done()
-		pipeToDaemon(childStdout, stdout, client, baseURL, runID)
+		if err := pipeToDaemon(childStdout, stdout, client, baseURL, runID, "stdout"); err != nil {
+			fmt.Fprintf(stderr, "act-gui: stdout log pipe failed: %v\n", err)
+		}
 	}()
 	go func() {
 		defer pipeWG.Done()
-		pipeToDaemon(childStderr, stderr, client, baseURL, runID)
+		if err := pipeToDaemon(childStderr, stderr, client, baseURL, runID, "stderr"); err != nil {
+			fmt.Fprintf(stderr, "act-gui: stderr log pipe failed: %v\n", err)
+		}
 	}()
 
 	err = cmd.Wait()

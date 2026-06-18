@@ -115,6 +115,7 @@ func resetParserTestState() {
 	defer parserMu.Unlock()
 	activeJobs = make(map[string]uint)
 	activeSteps = make(map[uint]uint)
+	logChunkBuffers = make(map[string][]byte)
 }
 
 func TestParseLogLineUpdatesSeededJob(t *testing.T) {

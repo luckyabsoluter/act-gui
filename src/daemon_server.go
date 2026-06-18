@@ -224,6 +224,7 @@ func runDaemon(host string, port string, baseURL string) error {
 	http.HandleFunc("/run/finish", func(w http.ResponseWriter, r *http.Request) {
 		var payload FinishRunPayload
 		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil && payload.RunID > 0 {
+			FlushLogChunks(db, payload.RunID)
 			status := finishRun(db, payload.RunID, payload.Status)
 			updateMsg, _ := json.Marshal(map[string]interface{}{
 				"event":  "run_finished",
@@ -238,7 +239,16 @@ func runDaemon(host string, port string, baseURL string) error {
 	http.HandleFunc("/log", func(w http.ResponseWriter, r *http.Request) {
 		var payload LogPayload
 		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
-			ParseLogLine(db, payload.RunID, payload.Message)
+			if payload.Data == "" {
+				ParseLogLine(db, payload.RunID, payload.Message)
+			} else {
+				chunk, err := payload.chunk()
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				ParseLogChunk(db, payload.RunID, payload.Stream, chunk)
+			}
 			updateMsg, _ := json.Marshal(map[string]interface{}{
 				"event":  "log",
 				"run_id": payload.RunID,

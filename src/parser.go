@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
 	"strings"
@@ -10,9 +11,10 @@ import (
 )
 
 var (
-	activeJobs  = make(map[string]uint)
-	activeSteps = make(map[uint]uint)
-	parserMu    sync.Mutex
+	activeJobs      = make(map[string]uint)
+	activeSteps     = make(map[uint]uint)
+	logChunkBuffers = make(map[string][]byte)
+	parserMu        sync.Mutex
 )
 
 func activeJobKey(runID uint, token string) string {
@@ -75,6 +77,63 @@ func ParseLogLine(db *gorm.DB, runID uint, line string) {
 	parserMu.Lock()
 	defer parserMu.Unlock()
 
+	parseLogLineLocked(db, runID, line)
+}
+
+func ParseLogChunk(db *gorm.DB, runID uint, stream string, chunk []byte) {
+	parserMu.Lock()
+	defer parserMu.Unlock()
+
+	key := logChunkKey(runID, stream)
+	data := append(logChunkBuffers[key], chunk...)
+	for {
+		idx := bytes.IndexByte(data, '\n')
+		if idx < 0 {
+			break
+		}
+
+		line := data[:idx]
+		if len(line) > 0 && line[len(line)-1] == '\r' {
+			line = line[:len(line)-1]
+		}
+		parseLogLineLocked(db, runID, string(bytes.ToValidUTF8(line, []byte("\uFFFD"))))
+		data = data[idx+1:]
+	}
+
+	if len(data) == 0 {
+		delete(logChunkBuffers, key)
+		return
+	}
+	logChunkBuffers[key] = append([]byte(nil), data...)
+}
+
+func FlushLogChunks(db *gorm.DB, runID uint) {
+	parserMu.Lock()
+	defer parserMu.Unlock()
+
+	prefix := fmt.Sprintf("%d-", runID)
+	for key, data := range logChunkBuffers {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		if len(data) > 0 {
+			if data[len(data)-1] == '\r' {
+				data = data[:len(data)-1]
+			}
+			parseLogLineLocked(db, runID, string(bytes.ToValidUTF8(data, []byte("\uFFFD"))))
+		}
+		delete(logChunkBuffers, key)
+	}
+}
+
+func logChunkKey(runID uint, stream string) string {
+	if stream == "" {
+		stream = "stdout"
+	}
+	return fmt.Sprintf("%d-%s", runID, stream)
+}
+
+func parseLogLineLocked(db *gorm.DB, runID uint, line string) {
 	re := regexp.MustCompile(`^\[(?:([^/]+)/)?([^\]]+)\]\s*(.*)`)
 	matches := re.FindStringSubmatch(line)
 
