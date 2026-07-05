@@ -4,6 +4,8 @@ act-gui is a local web UI for running GitHub Actions workflows through [`act`](h
 
 It keeps act-compatible command-line arguments, starts or connects to a local daemon, and shows workflow runs in a GitHub Actions-like interface with workflows, runs, jobs, steps, logs, status, and run history management.
 
+<img height="612" alt="screenshot" src="https://github.com/user-attachments/assets/bfab1fdc-2f30-4181-9bd9-6d4090d79d0b" />
+
 ## Usage
 
 Run act-gui with act-compatible arguments:
