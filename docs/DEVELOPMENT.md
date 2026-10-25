@@ -67,11 +67,20 @@ go build -ldflags "-X main.ActGUIVersion=${version}" -o act-gui ./src
 
 For logic that can be isolated from Vue components, put it in a plain TypeScript module and cover it with `npm test`. This keeps UI regressions testable without adding a browser test framework for every small state calculation.
 
+The frontend overrides `postcss-selector-parser` to version 7.1.6 or later because Tailwind CSS 3 and `postcss-nested` otherwise resolve a version affected by GHSA-rj75-hqrm-r3gf (CPU exhaustion while parsing selectors). Keep this override until their dependency ranges include a patched version. When changing it, verify the production CSS build as well as the frontend tests.
+
 ## Runtime Data
 
 Runtime state belongs in the user's application data directory, not in the current repository. The daemon stores its SQLite database under the OS-specific app data path so running act-gui from a project does not dirty the project tree.
 
 ## Maintenance Rules
+
+### Dependency Security
+
+- `github.com/moby/go-archive` remains affected by [GO-2026-6253](https://pkg.go.dev/vuln/GO-2026-6253). Its fix starts at v0.3.0, which removes `archive.Uncompressed` used by act v0.2.89 in `pkg/container/docker_build.go`. Updating the archive module alone fails to compile; resolving this requires an act compatibility update or a maintained patch.
+- [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) concerns the unmaintained `golang.org/x/crypto/openpgp` packages. The current application dependency graph uses `github.com/ProtonMail/go-crypto/openpgp` instead. Module-only scans can still report the advisory because other `golang.org/x/crypto` packages are required.
+
+### General
 
 - Keep act CLI compatibility first. act-gui arguments should continue to map naturally to act.
 - Do not introduce invasive act changes unless the parser surface becomes unmaintainable.
