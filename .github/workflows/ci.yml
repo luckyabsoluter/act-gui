@@ -48,6 +48,9 @@ jobs:
       - name: Test Go
         run: go test ./...
 
+      - name: Test archive compatibility and containment
+        run: go test github.com/moby/go-archive -run 'Test(TarWithOptions|Untar)'
+
       - name: Build Go
         run: |
           version="$(go run ./tools/buildversion)"

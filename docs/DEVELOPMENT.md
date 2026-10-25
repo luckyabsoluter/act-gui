@@ -77,7 +77,7 @@ Runtime state belongs in the user's application data directory, not in the curre
 
 ### Dependency Security
 
-- `github.com/moby/go-archive` remains affected by [GO-2026-6253](https://pkg.go.dev/vuln/GO-2026-6253). Its fix starts at v0.3.0, which removes `archive.Uncompressed` used by act v0.2.89 in `pkg/container/docker_build.go`. Updating the archive module alone fails to compile; resolving this requires an act compatibility update or a maintained patch.
+- `github.com/moby/go-archive` uses a local copy of patched v0.3.3 with an `archive.Uncompressed` compatibility alias for act v0.2.89. The extraction code is unchanged from upstream and includes the fix for [GO-2026-6253](https://pkg.go.dev/vuln/GO-2026-6253). See [the source provenance and maintenance instructions](../third_party/go-archive/README.act-gui.md), including the vulnerability-scanning limitation of local replacements.
 - [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) concerns the unmaintained `golang.org/x/crypto/openpgp` packages. The current application dependency graph uses `github.com/ProtonMail/go-crypto/openpgp` instead. Module-only scans can still report the advisory because other `golang.org/x/crypto` packages are required.
 
 ### General
